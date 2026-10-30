@@ -1,13 +1,7 @@
 import SwiftUI
 
-// A unique ID lets the list distinguish thoughts even when their text is identical.
-struct Thought: Identifiable {
-    let id = UUID()
-    let text: String
-}
-
 struct ContentView: View {
-    @Binding var thoughts: [Thought]
+    let store: ThoughtStore
     @State private var draft = ""
 
     private var trimmedDraft: String {
@@ -35,21 +29,36 @@ struct ContentView: View {
                     .textFieldStyle(.roundedBorder)
                     .accessibilityLabel("Thought")
                     .onSubmit(catchThought)
+                    .disabled(store.hasLoadError)
 
                 Button("Catch thought", action: catchThought)
-                    .disabled(trimmedDraft.isEmpty)
+                    .disabled(trimmedDraft.isEmpty || store.hasLoadError)
             }
 
-            Text("Thoughts stay in memory until you quit the app.")
+            Text("Thoughts are saved on this Mac.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
 
-            if thoughts.isEmpty {
+            if let message = store.errorMessage {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(message)
+                        .foregroundStyle(.red)
+                        .textSelection(.enabled)
+
+                    if store.hasLoadError {
+                        Button("Retry loading") {
+                            store.retryLoading()
+                        }
+                    }
+                }
+            }
+
+            if store.thoughts.isEmpty && !store.hasLoadError {
                 Text("No thoughts caught yet.")
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                List(thoughts) { thought in
+                List(store.thoughts) { thought in
                     Text(thought.text)
                         .textSelection(.enabled)
                         .fixedSize(horizontal: false, vertical: true)
@@ -63,10 +72,8 @@ struct ContentView: View {
     }
 
     private func catchThought() {
-        let text = trimmedDraft
-        guard !text.isEmpty else { return }
-
-        thoughts.insert(Thought(text: text), at: 0)
-        draft = ""
+        if store.capture(draft) {
+            draft = ""
+        }
     }
 }
