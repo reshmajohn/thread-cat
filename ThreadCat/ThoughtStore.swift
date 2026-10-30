@@ -22,11 +22,30 @@ final class ThoughtStore {
         let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return false }
 
-        let updatedThoughts = [Thought(text: text)] + thoughts
+        return save(
+            [Thought(text: text)] + thoughts,
+            failureMessage: "Couldn’t save your thought. Your draft is still here; try catching it again."
+        )
+    }
+
+    func setCompleted(_ completed: Bool, for id: UUID) -> Bool {
+        guard !hasLoadError,
+              let index = thoughts.firstIndex(where: { $0.id == id }) else { return false }
+        guard thoughts[index].isCompleted != completed else { return true }
+
+        var updatedThoughts = thoughts
+        updatedThoughts[index].completedAt = completed ? Date() : nil
+        return save(
+            updatedThoughts,
+            failureMessage: "Couldn’t change completion. The thought is unchanged; try again."
+        )
+    }
+
+    private func save(_ updatedThoughts: [Thought], failureMessage: String) -> Bool {
         do {
             let encoder = JSONEncoder()
             encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-            let data = try encoder.encode(SavedThoughts(version: 1, thoughts: updatedThoughts))
+            let data = try encoder.encode(SavedThoughts(version: 2, thoughts: updatedThoughts))
             try FileManager.default.createDirectory(
                 at: fileURL.deletingLastPathComponent(),
                 withIntermediateDirectories: true
@@ -37,7 +56,7 @@ final class ThoughtStore {
             errorMessage = nil
             return true
         } catch {
-            errorMessage = "Couldn’t save your thought. Your draft is still here; try catching it again. \(error.localizedDescription)"
+            errorMessage = "\(failureMessage) \(error.localizedDescription)"
             return false
         }
     }
@@ -60,7 +79,10 @@ final class ThoughtStore {
             }
 
             let saved = try JSONDecoder().decode(SavedThoughts.self, from: data)
-            guard saved.version == 1 else { throw SavedFileError.unsupportedVersion(saved.version) }
+            // Version 1 has no completion dates. Codable reads those missing values as nil.
+            guard saved.version == 1 || saved.version == 2 else {
+                throw SavedFileError.unsupportedVersion(saved.version)
+            }
             guard Set(saved.thoughts.map(\.id)).count == saved.thoughts.count else {
                 throw SavedFileError.duplicateIDs
             }
@@ -70,7 +92,7 @@ final class ThoughtStore {
         } catch {
             // Never overwrite an unreadable file with an empty collection.
             hasLoadError = true
-            errorMessage = "Couldn’t open saved thoughts. Capture is paused to protect the file. \(error.localizedDescription)"
+            errorMessage = "Couldn’t open saved thoughts. Changes are paused to protect the file. \(error.localizedDescription)"
         }
     }
 }

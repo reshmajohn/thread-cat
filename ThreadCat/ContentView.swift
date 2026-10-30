@@ -3,9 +3,15 @@ import SwiftUI
 struct ContentView: View {
     let store: ThoughtStore
     @State private var draft = ""
+    @State private var showCompleted = false
 
     private var trimmedDraft: String {
         draft.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    // Filtering only changes what is displayed; completed thoughts stay in the store.
+    private var visibleThoughts: [Thought] {
+        store.thoughts.filter { showCompleted || !$0.isCompleted }
     }
 
     var body: some View {
@@ -53,16 +59,40 @@ struct ContentView: View {
                 }
             }
 
-            if store.thoughts.isEmpty && !store.hasLoadError {
-                Text("No thoughts caught yet.")
+            HStack {
+                Text("Held thoughts")
+                    .font(.headline)
+                Spacer()
+                Toggle("Show completed", isOn: $showCompleted)
+                    .toggleStyle(.checkbox)
+            }
+
+            if visibleThoughts.isEmpty && !store.hasLoadError {
+                Text(store.thoughts.isEmpty ? "No thoughts caught yet." : "All caught thoughts are complete.")
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                List(store.thoughts) { thought in
-                    Text(thought.text)
-                        .textSelection(.enabled)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .padding(.vertical, 4)
+                List(visibleThoughts) { thought in
+                    HStack(alignment: .top, spacing: 10) {
+                        Button {
+                            _ = store.setCompleted(!thought.isCompleted, for: thought.id)
+                        } label: {
+                            Image(systemName: thought.isCompleted ? "checkmark.circle.fill" : "circle")
+                                .font(.title3)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("\(thought.isCompleted ? "Reopen" : "Complete"): \(thought.text)")
+                        .help(thought.isCompleted ? "Mark as unfinished" : "Mark as complete")
+                        .disabled(store.hasLoadError)
+
+                        Text(thought.text)
+                            .strikethrough(thought.isCompleted)
+                            .foregroundStyle(thought.isCompleted ? .secondary : .primary)
+                            .textSelection(.enabled)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .padding(.vertical, 4)
+                    .accessibilityElement(children: .contain)
                 }
                 .listStyle(.inset)
             }
